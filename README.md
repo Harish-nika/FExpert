@@ -17,16 +17,7 @@ The **Fixed Income Expert** is an AI-powered system designed to help users learn
 
 ## 🏗️ Architecture Overview
 
-```
-            ┌──────────────┐       ┌──────────────┐
-            │  Frontend  │──────▶│ FastAPI Server│
-            │ (Streamlit)│       │   (backend)   │
-            └────────────┘       └────────────┘
-                 │                        │
-        📄 Upload PDF               📄 Store Embeddings
-        ❓ Ask Question             🧑‍🧠 FAISS Vector Search
-        📄 View Metadata           🤖 LLM Answer via Groq
-```
+![Architecture](images/diagram-export-4-25-2025-11_44_49-AM.png)
 
 ---
 
@@ -198,20 +189,6 @@ langchain-groq
 
 This guide explains how the **FactEntry FEexpert** system (consisting of a FastAPI backend and Streamlit frontend) was set up and hosted as systemd services on a Linux server for internal organizational use.
 
----
-
-## 📁 Project Structure
-```
-FactEntry_FEexpert/
-├── backend/
-│   └── backend.py        # FastAPI backend app
-├── frontend/
-│   └── frontend.py       # Streamlit frontend app
-├── FExpENV/              # Python virtual environment (venv)
-└── ...
-```
-
----
 
 ## 🛠️ Step-by-Step Setup
 
@@ -326,6 +303,13 @@ sudo systemctl status streamlit.service
 
 ---
 
+---
+## logs checking of service
+```bash
+journalctl -u streamlit.service --no-pager | tail -n 20
+journalctl -u fastapi.service --no-pager | tail -n 20
+```
+---
 ## ✅ Notes
 - Make sure your backend and frontend paths match your actual directory structure.
 - Adjust the `--server.port` and host settings if needed.
@@ -333,9 +317,18 @@ sudo systemctl status streamlit.service
 
 ---
 
-> This setup enables persistent deployment of the **FactEntry FEexpert** system as services that start automatically on boot, providing a reliable and seamless experience for internal users.
+> This setup enables persistent deployment of the **FactEntry FExpert** system as services that start automatically on boot, providing a reliable and seamless experience for internal users.
 
-
+---
+## Service log
+frontend service running on server
+![Frontend running on server](images/fs.png)
+backend service running on server
+![backend service on server](images/bs.png)
+## UI
+![Upload and Embed section](images/image-1.png)
+![meta Data index and embed view](images/image.png) 
+![Ai Responses](images/image-2.png)
 
 ---
 
