@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+python-multipart
+pdfplumber
+PyMuPDF
+sentence-transformers
+faiss-cpu
+pydantic
+requests
+streamlit
+python-dotenv
+requests
+langchain-community          
+langchain-core               
+langchain-google-genai       
+langchain-groq               
+langchain-text-splitters     

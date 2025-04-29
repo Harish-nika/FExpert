@@ -1,109 +1,140 @@
+import os
 import streamlit as st
 import requests
-import json
+from dotenv import load_dotenv
 
-# Backend URL
-BACKEND_URL = "http://localhost:8002"
+# Load environment variables
+load_dotenv()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+API_URL = "http://localhost:8005"
 
-st.set_page_config(page_title="FExpert - FactEntry BOT", layout="wide")
-st.title("📊 FactEntry Fixed Income Expert")
+# Local Ollama models
+LOCAL_MODELS = {
+    "wizardlm2": "wizardlm2:7b",
+    "llama3.3": "llama3.3:70b",
+    "deepseek-r1-8b": "deepseek-r1:8b",
+    "deepseek-r1-1.5b": "deepseek-r1:1.5b"
+}
 
-# Sidebar for navigation
-page = st.sidebar.radio("Navigation", ["Upload PDF", "Ask a Question", "Uploaded Files", "Search Content"])
+st.set_page_config(page_title="FactEntry Fixed Income Expert", layout="wide")
+st.title("📄 FactEntry Fixed Income Expert")
 
-# Upload PDF
-if page == "Upload PDF":
-    st.header("📤 Upload a PDF")
-    uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
-    if uploaded_file and st.button("Upload"):
-        with st.spinner("Uploading and processing..."):
-            files = {"file": (uploaded_file.name, uploaded_file, "application/pdf")}
-            response = requests.post(f"{BACKEND_URL}/upload", files=files)
-            if response.status_code == 200:
-                st.success("✅ PDF uploaded and processed!")
-            else:
-                st.error(f"❌ Upload failed: {response.json()['detail']}")
+if "qa_history" not in st.session_state:
+    st.session_state.qa_history = []
 
-# Ask a Question
-elif page == "Ask a Question":
-    st.header("🧠 Ask a Question")
-    query = st.text_area("Enter your question:", height=100)
-    model = st.selectbox("Choose a model:", ["groq", "deepseek", "llama"])
+if "model_choice" not in st.session_state:
+    st.session_state.model_choice = {}
 
-    if st.button("Get Answer"):
-        if not query:
-            st.warning("Please enter a question first.")
-        else:
-            with st.spinner("Fetching answer..."):
-                payload = {"query": query, "model": model}
-                response = requests.post(f"{BACKEND_URL}/query", json=payload)
-                if response.status_code == 200:
-                    result = response.json()
-                    st.subheader("📌 Answer")
-                    st.success(result["answer"])
-                    with st.expander("📄 Source Chunks"):
-                        for i, chunk in enumerate(result["source"]):
-                            st.markdown(f"**Chunk {i+1}:**")
-                            st.code(chunk)
-                else:
-                    st.error(f"❌ Error: {response.json()['detail']}")
+# Tabs
+tab1, tab2, tab3 = st.tabs(["📤 Upload PDF", "❓ Ask Expert", "🔍 Semantic Search"])
 
-# Search Content
-elif page == "Search Content":
-    st.header("🔍 Search Knowledge Base")
-    user_query = st.text_input("Enter a search query:")
-    top_k = st.number_input("How many top chunks to retrieve?", min_value=1, max_value=20, value=5)
+# --- 1. Upload PDF Tab ---
+with tab1:
+    st.header("Upload and Index PDF")
+    uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
+    if uploaded_file:
+        st.write(f"**Filename:** {uploaded_file.name}")
+        st.write(f"**Size:** {len(uploaded_file.getvalue()) / 1024:.2f} KB")
 
-    # Only proceed if the search button is clicked and there is a query
-    if user_query:
-        if st.button("Search Embeddings"):
-            with st.spinner("Searching FAISS index..."):
+        if st.button("Upload and Index PDF"):
+            with st.status("📥 Uploading and processing PDF...", expanded=True) as status:
                 try:
-                    # Send the search query and top_k value to the backend API
                     res = requests.post(
-                        f"{BACKEND_URL}/search-chunks",
-                        json={"query": user_query, "top_k": top_k}
+                        f"{API_URL}/upload_pdf",
+                        files={"file": (uploaded_file.name, uploaded_file, "application/pdf")},
+                        timeout=120
                     )
-
-                    # Handle the response from the server
                     if res.status_code == 200:
-                        chunks = res.json().get("results", [])
-                        
-                        # Check if any chunks are returned
-                        if chunks:
-                            for i, chunk in enumerate(chunks):
-                                st.subheader(f"🔹 Chunk #{i+1}")
-                                st.markdown(f"**Text:** {chunk['text']}")
-                                st.markdown(f"**Score:** {chunk['score']:.4f}")
-                                st.write("---")
-                        else:
-                            st.info("No chunks matched your query.")
-                    
-                    # Handle any error responses from the backend
-                    elif res.status_code != 200:
-                        st.error(f"Error: {res.json().get('detail', res.text)}")
-
-                except requests.exceptions.RequestException as e:
-                    st.error(f"Request failed: {str(e)}")
-
+                        status.update(label="✅ PDF indexed successfully!", state="complete")
+                    else:
+                        status.update(label=f"❌ {res.status_code}: {res.text}", state="error")
                 except Exception as e:
-                    st.error(f"Failed to retrieve search results: {str(e)}")
-    
-    # If no query is entered, display a prompt to enter one
-    elif st.button("Search Embeddings"):
-        st.warning("Please enter a search query first.")
+                    status.update(label=f"❌ Request failed: {e}", state="error")
 
-# View Uploaded Files
-elif page == "Uploaded Files":
-    st.header("📁 Uploaded Files")
-    with st.spinner("Loading uploaded files..."):
-        response = requests.get(f"{BACKEND_URL}/view-uploads")
-        if response.status_code == 200:
-            files = response.json()["uploaded_files"]
-            for file in files:
-                st.markdown(f"📄 **{file['filename']}**")
-                st.write(f"Uploaded at: {file['upload_time']}")
-                st.write(f"Chunks: {file['num_chunks']}")
-                st.markdown("---")
+# --- 2. Ask Question Tab ---
+with tab2:
+    st.header("Ask a Question")
+    question = st.text_area("Enter your question:")
+
+    model_type = st.radio("Choose Model Type:", ["Local (Ollama)", "Remote (Groq API)"])
+    headers = {}
+
+    if model_type == "Local (Ollama)":
+        selected = st.selectbox("Select Local Model:", list(LOCAL_MODELS.keys()), format_func=lambda x: f"{x} ({LOCAL_MODELS[x]})")
+        st.session_state.model_choice = {"type": "ollama", "model_name": LOCAL_MODELS[selected]}
+    else:
+        if not GROQ_API_KEY:
+            st.error("🚫 GROQ_API_KEY missing. Set it in your `.env` file.")
         else:
-            st.warning(response.json()["detail"])
+            headers["Authorization"] = f"Bearer {GROQ_API_KEY}"
+            st.session_state.model_choice = {"type": "groq", "model_name": "llama3-8b-8192"}
+
+    if st.button("Ask"):
+        if not question.strip():
+            st.warning("⚠️ Please enter a question.")
+        else:
+            with st.spinner("Getting answer..."):
+                try:
+                    res = requests.post(
+                        f"{API_URL}/ask_question",
+                        headers=headers,
+                        json={"question": question, "model_choice": st.session_state.model_choice},
+                        timeout=60
+                    )
+                    if res.status_code == 200:
+                        data = res.json()
+                        answer = data.get("answer", "No answer.")
+                        st.subheader("📬 Answer")
+                        st.success(answer)
+                        st.caption(f"Model Used: `{st.session_state.model_choice['model_name']}`")
+
+                        st.session_state.qa_history.append((question, answer))
+
+                        if data.get("sources"):
+                            st.markdown("#### 📚 Sources:")
+                            for src in set(data["sources"]):
+                                st.write(f"- {src}")
+                    else:
+                        st.error(f"❌ {res.status_code}: {res.text}")
+                except Exception as e:
+                    st.error(f"❌ Request failed: {e}")
+
+    # History
+    if st.session_state.qa_history:
+        with st.expander("🕑 Q&A History"):
+            for q, a in st.session_state.qa_history:
+                st.markdown(f"**Q:** {q}")
+                st.markdown(f"**A:** {a}")
+                st.markdown("---")
+
+# --- 3. Semantic Search Tab ---
+with tab3:
+    st.header("Semantic Chunk Search")
+    query = st.text_input("Enter phrase to search:")
+    top_k = st.slider("Top K results", 1, 10, 5)
+
+    if st.button("Search"):
+        if not query.strip():
+            st.warning("⚠️ Please enter a query.")
+        else:
+            with st.spinner("Searching chunks..."):
+                try:
+                    res = requests.post(
+                        f"{API_URL}/search-chunks",
+                        json={"query": query, "top_k": top_k},
+                        timeout=60
+                    )
+                    if res.status_code == 200:
+                        results = res.json().get("results", [])
+                        if results:
+                            st.markdown("### 🔍 Top Chunks:")
+                            for r in results:
+                                st.markdown(f"**Score:** `{r['score']:.4f}`")
+                                st.write(r["text"])
+                                st.markdown("---")
+                        else:
+                            st.info("ℹ️ No matches found.")
+                    else:
+                        st.error(f"❌ {res.status_code}: {res.text}")
+                except Exception as e:
+                    st.error(f"❌ Request failed: {e}")
