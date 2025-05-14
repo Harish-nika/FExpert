@@ -5,9 +5,8 @@ from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+API_URL = os.getenv("API_URL", "http://localhost:8007")  # Fallback to localhost if not set
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-
-API_URL = "http://localhost:8007"  # Backend URL
 
 LOCAL_MODELS = {
     "wizardlm2": "wizardlm2:7b",

@@ -12,7 +12,7 @@ from typing import List
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_groq import ChatGroq
+from langchain_groq import ChatGroqF
 from langchain_core.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
 import subprocess  # For running Ollama models

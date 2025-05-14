@@ -1,3 +1,4 @@
+# Import necessary modules
 import os
 import shutil
 import uuid
@@ -13,7 +14,6 @@ from dotenv import load_dotenv
 import asyncio
 import faiss
 import pickle
-from langchain_community.chat_models import ChatOpenAI, ChatOllama
 from sentence_transformers import SentenceTransformer
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import ConversationalRetrievalChain
@@ -23,7 +23,7 @@ from langchain.schema import Document
 from langchain_community.vectorstores import FAISS
 from langchain_community.docstore.in_memory import InMemoryDocstore
 
-
+# Environment variable setup
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
@@ -35,8 +35,10 @@ PDF_METADATA_PATH = "/home/harish/Project_works/FExpert/backup/metadata.json"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(os.path.dirname(FAISS_INDEX_PATH), exist_ok=True)
 
+# Initialize FastAPI
 app = FastAPI()
 
+# CORS middleware setup
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -45,8 +47,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-chains: Dict[str, ConversationalRetrievalChain] = {}
-
+# Pydantic request models
 class AskRequest(BaseModel):
     question: str
     model_choice: Dict[str, str]
@@ -56,6 +57,17 @@ class SearchRequest(BaseModel):
     query: str
     top_k: int
 
+# Initialize sentence transformer model
+embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+
+# Function to encode text using the transformer model
+def encode_fn(texts):
+    return embedding_model.encode(texts, show_progress_bar=False)
+
+# Initialize chains dictionary
+chains: Dict[str, ConversationalRetrievalChain] = {}
+
+# Load metadata
 def load_metadata():
     if os.path.exists(PDF_METADATA_PATH):
         with open(PDF_METADATA_PATH, "r") as f:
@@ -66,11 +78,7 @@ def save_metadata(metadata):
     with open(PDF_METADATA_PATH, "w") as f:
         json.dump(metadata, f, indent=4)
 
-embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
-
-def encode_fn(texts):
-    return embedding_model.encode(texts, show_progress_bar=False)
-
+# Load FAISS index and associated documents
 def load_faiss_index():
     if os.path.exists(FAISS_INDEX_PATH):
         with open(FAISS_DOCS_PATH, "rb") as f:
@@ -80,6 +88,7 @@ def load_faiss_index():
         return FAISS(encode_fn, index, docstore)
     return None
 
+# Save FAISS index and associated documents
 def save_faiss_index(faiss_index):
     if not faiss_index._documents:
         raise ValueError("No documents to save in FAISS index.")
@@ -87,6 +96,7 @@ def save_faiss_index(faiss_index):
     with open(FAISS_DOCS_PATH, "wb") as f:
         pickle.dump(faiss_index._documents, f)
 
+# Add documents to FAISS index
 def add_to_faiss_index(new_docs):
     new_index = FAISS.from_documents(new_docs, encode_fn)
     if not new_index._documents:
@@ -100,6 +110,7 @@ def add_to_faiss_index(new_docs):
         save_faiss_index(new_index)
         return new_index
 
+# Load or create a chain for document retrieval
 def load_or_create_chain(file_path: str, model_type: str, model_name: str):
     file_id = os.path.basename(file_path)
     if file_id in chains:
@@ -124,6 +135,7 @@ def load_or_create_chain(file_path: str, model_type: str, model_name: str):
     chains[file_id] = chain
     return chain
 
+# Preload model to avoid reloading
 preloaded_chains = {}
 
 async def preload_model(file_path: str, model_type: str, model_name: str):
@@ -131,6 +143,7 @@ async def preload_model(file_path: str, model_type: str, model_name: str):
     if file_id not in preloaded_chains:
         preloaded_chains[file_id] = load_or_create_chain(file_path, model_type, model_name)
 
+# Upload PDF and store metadata
 @app.post("/upload_pdf")
 async def upload_pdf(file: UploadFile = File(...)):
     file_id = str(uuid.uuid4())
@@ -155,11 +168,13 @@ async def upload_pdf(file: UploadFile = File(...)):
 
     return JSONResponse({"message": "File uploaded and metadata stored.", "file_name": file_name})
 
+# List all uploaded PDFs
 @app.get("/list_uploaded_pdfs")
 async def list_uploaded_pdfs():
     metadata = load_metadata()
     return JSONResponse({"pdfs": metadata})
 
+# Ask a question to the uploaded document
 @app.post("/ask_question")
 async def ask_question(payload: AskRequest):
     file_name = payload.file_name
@@ -182,6 +197,7 @@ async def ask_question(payload: AskRequest):
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
+# Search through the chunks
 @app.post("/search-chunks")
 async def search_chunks(payload: SearchRequest):
     faiss_index = load_faiss_index()
@@ -193,5 +209,6 @@ async def search_chunks(payload: SearchRequest):
     sorted_results = sorted(results, key=lambda x: x["score"], reverse=True)[:payload.top_k]
     return JSONResponse({"results": sorted_results})
 
+# Start FastAPI server
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8007, reload=True)

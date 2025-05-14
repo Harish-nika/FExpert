@@ -1,0 +1,10 @@
+streamlit
+langchain
+langchain-groq
+langchain-core
+langchain-community
+dotenv
+pandas
+faiss-cpu  # or faiss-gpu if you're using GPU
+PyPDF2  # or any other PDF processing library you're using
+langchain-google-genai
